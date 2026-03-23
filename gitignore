@@ -1,0 +1,77 @@
+# =============================================================================
+# MDAnalysis-GROMACS .gitignore
+# =============================================================================
+
+# ----- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# ----- GROMACS simulation data -----------------------------------------------
+# Trajectories (can be tens to hundreds of GB)
+*.xtc
+*.trr
+*.cpt
+
+# Topology and run-input files (may contain force-field IP)
+*.tpr
+*.top
+*.itp
+
+# Energy / log files
+*.edr
+*.log
+*.mdp
+
+# Index files (usually system-specific, regenerate with gmx make_ndx)
+*.ndx
+
+# GROMACS backup files
+\#*\#
+
+# ----- Analysis outputs ------------------------------------------------------
+# Raw data files produced during analysis (regenerate from trajectory)
+*.xvg
+*.xpm
+*.dat
+
+# Figures (regenerate from data)
+*.jpeg
+*.jpg
+*.png
+
+# Processed data
+cross_corr_*.csv
+pc_projections_*.csv
+
+# Coloured PDB outputs
+bfactor_*.pdb
+average_structure_*.pdb
+average_covar_*.pdb
+
+# ----- OS / editor junk ------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

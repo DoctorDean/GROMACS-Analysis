@@ -1,0 +1,12 @@
+# MDAnalysis-GROMACS – Python dependencies
+# Install with: pip install -r requirements.txt
+#
+# GROMACS itself is NOT installed via pip.
+# See https://manual.gromacs.org/documentation/current/install-guide/index.html
+
+biopython>=1.81
+matplotlib>=3.7
+networkx>=3.1
+numpy>=1.24
+pandas>=2.0
+scipy>=1.11
