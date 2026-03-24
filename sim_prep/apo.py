@@ -42,7 +42,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from base import (
+from sim_prep.base import (
     LIMITS,
     VALID_BOX_SHAPES,
     VALID_NEG_IONS,
