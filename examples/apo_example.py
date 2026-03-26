@@ -8,13 +8,13 @@ Before running
 --------------
 1. Place your protein PDB in the working directory, e.g.
    ``/data/simulations/hsp90_apo/hsp90.pdb``
-2. Populate ``config/gmx/apo/`` with your MDP templates.
+2. Populate ``configs/apo/`` with your MDP templates.
 3. Ensure ``gmx`` is on your PATH.
 4. Install dependencies:  ``pip install -r requirements.txt``
 """
 
 from pathlib import Path
-from apo import ApoSimPrepper
+from sim_prep.apo import ApoSimPrepper
 from gromacs_analysis import GromacsAnalysis
 
 WORK_DIR     = Path("/data/simulations/hsp90_apo")

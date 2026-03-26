@@ -8,8 +8,52 @@ The ``CplxSimPrepper`` class inherits all shared GROMACS steps from
 steps required to parameterise a small molecule with AmberTools/ACPYPE
 and assemble the protein–ligand complex topology.
 
-Typical pipeline
-----------------
+Three input paths are supported
+--------------------------------
+
+**Path A — AutoDock complex** (docked PDB with ligand inside):
+::
+
+    sim.process_autodocked_complex()   # splits protein + ligand, runs pdb2gmx
+    sim.param_with_amber()
+    sim.gro2itp()
+    sim.generate_ligand_ndx()
+    sim.build_gmx_complex()
+    sim.build_complex_topology()
+
+**Path B — Native structure** (PDB, mmCIF, or GRO from RCSB / AlphaFold / Glide):
+::
+
+    sim.prepare_from_structure(
+        protein_input="6lu7.cif",          # .pdb / .cif / .mmcif / .gro
+        ligand_input="N3.sdf",             # .pdb / .mol2 / .sdf / .mol
+                                           # or "smiles:CC(=O)..."
+        keep_residues=["ZN"],              # metal ions to retain
+    )
+    sim.param_with_amber()
+    sim.gro2itp()
+    sim.generate_ligand_ndx()
+    sim.build_gmx_complex()
+    sim.build_complex_topology()
+
+**Path C — Pre-separated files** (protein and ligand already in separate files):
+::
+
+    sim.prepare_from_separate_files(
+        protein_file="protein_clean.pdb",
+        ligand_file="ligand.mol2",         # .pdb / .mol2 / .sdf / .mol
+    )
+    sim.param_with_amber()
+    sim.gro2itp()
+    sim.generate_ligand_ndx()
+    sim.build_gmx_complex()
+    sim.build_complex_topology()
+
+All three paths converge at ``param_with_amber()`` and share the
+remaining solvation, equilibration, and production-run steps.
+
+Full example (AutoDock path)
+-----------------------------
 ::
 
     from sim_prep.complex import CplxSimPrepper
@@ -17,8 +61,8 @@ Typical pipeline
     sim = CplxSimPrepper(
         protein_name="hsp90",
         ligand_code="ATP",
-        param_ligand_name="UNL",     # residue name used by AutoDock
-        remove_ligands=["UNL"],      # residues to strip from the complex PDB
+        param_ligand_name="UNL",
+        remove_ligands=["UNL"],
         sim_len=100,
         bx_dim=1.0,
         bx_shp="dodecahedron",
@@ -63,29 +107,38 @@ from sim_prep.base import (
     SimulationPrepper,
 )
 from utils.amber_params import AmberParameteriser
+from utils.structure_io import prepare_structure
 
 
 class CplxSimPrepper(SimulationPrepper):
     """
     Preparation workflow for protein–ligand complex simulations.
 
-    Ligand parameterisation is delegated to a utils/amber_params.py
-    that wraps AmberTools ``antechamber`` and ACPYPE.  The resulting
-    GROMACS-compatible topology is then merged into the protein
-    topology produced by ``gmx pdb2gmx``.
+    Supports three input paths — see module docstring for full details:
+
+    - **Path A**: AutoDock complex PDB → :meth:`process_autodocked_complex`
+    - **Path B**: Native PDB / mmCIF / GRO + separate ligand file or SMILES
+                  → :meth:`prepare_from_structure`
+    - **Path C**: Pre-separated protein and ligand files
+                  → :meth:`prepare_from_separate_files`
+
+    All paths converge at :meth:`param_with_amber` and share all
+    subsequent solvation, equilibration, and production steps.
 
     Parameters
     ----------
     protein_name : str
-        Stem of the complex PDB file (without ``.pdb``).
+        Stem used for output files (without extension).  For Path A,
+        this must also match the input complex PDB filename stem.
     ligand_code : str
         Three-letter residue code for the ligand (e.g. ``"ATP"``).
     param_ligand_name : str, optional
-        Residue name used for the ligand by the docking software before
-        renaming.  Defaults to ``"UNL"`` (AutoDock Vina convention).
+        Residue name used by the docking software (AutoDock Vina uses
+        ``"UNL"`` by default).  Only relevant for Path A.
     remove_ligands : list[str], optional
-        Residue names to strip from the complex PDB before running
-        ``pdb2gmx``.  Defaults to ``["UNL"]``.
+        Residue names to strip when preparing the protein-only PDB for
+        ``pdb2gmx``.  Defaults to ``["UNL"]``.  Only relevant for
+        Path A.
     sim_len : float
         Production run length in nanoseconds.
     bx_dim : float
@@ -118,7 +171,7 @@ class CplxSimPrepper(SimulationPrepper):
 
         # MDP templates and config directory
         self.config_dir = (
-            self.script_directory.parent / "md-configs" / "complex"
+            self.script_directory.parent / "config" / "gmx" / "complex"
         )
         self.mdp_files: dict[str, str] = {
             "ions": "ions_prot_lig",
@@ -130,7 +183,7 @@ class CplxSimPrepper(SimulationPrepper):
 
         # Path to the parameterisation shell script
         self.param_with_amber_script: Path = (
-            self.script_directory.parent / "utils" / "amber_params.py"
+            self.script_directory.parent / "utils" / "param_with_amber.sh"
         )
 
         # Ligand file handles (populated after param_with_amber / gro2itp)
@@ -272,6 +325,147 @@ class CplxSimPrepper(SimulationPrepper):
         print(f"✓  Cleaned PDB → {clean_pdb.name}")
         print(f"✓  Ligand PDB  → {ligand_pdb.name}")
         self.protein_pdb2gmx()
+
+    # ------------------------------------------------------------------
+    # Path B — native structure input (PDB, mmCIF, GRO + ligand file)
+    # ------------------------------------------------------------------
+
+    def prepare_from_structure(
+        self,
+        protein_input: str,
+        ligand_input: str,
+        keep_residues: Optional[list[str]] = None,
+        remove_hetatm: bool = True,
+        remove_waters: bool = True,
+    ) -> None:
+        """
+        Prepare a complex from a native protein structure and a separate
+        ligand file (or SMILES string).
+
+        Use this path when starting from an RCSB PDB / mmCIF download,
+        an AlphaFold model, or a Glide/GOLD output where the protein and
+        ligand files are in separate formats.
+
+        Steps
+        -----
+        1. Convert and clean the protein structure to
+           ``{protein_name}_clean.pdb`` using :func:`~utils.structure_io.prepare_structure`.
+        2. Convert the ligand to ``{ligand_code}.pdb``.
+        3. Run ``gmx pdb2gmx`` on the protein PDB.
+
+        Parameters
+        ----------
+        protein_input : str
+            Path to the protein structure file.  Accepted formats:
+            ``.pdb``, ``.cif`` / ``.mmcif``, ``.gro``.
+        ligand_input : str
+            Path to the ligand file, or an inline SMILES string prefixed
+            with ``"smiles:"``.  Accepted file formats: ``.pdb``,
+            ``.mol2``, ``.sdf``, ``.mol``.
+        keep_residues : list[str], optional
+            Residue names to retain even when ``remove_hetatm=True``.
+            Use this to keep metal ions co-crystallised with the protein
+            (e.g. ``["ZN", "MG", "FE"]``).  These residues will need
+            manual parameter files or custom force-field entries.
+        remove_hetatm : bool, optional
+            Strip ``HETATM`` records from the protein structure (other
+            than those in ``keep_residues``).  Defaults to ``True``.
+        remove_waters : bool, optional
+            Strip water molecules from the protein structure.  Defaults
+            to ``True``.  Crystal waters are generally removed before MD
+            solvation; retain them only if they are known to be
+            functionally important.
+
+        Output files
+        ------------
+        ``{protein_name}_clean.pdb``, ``{ligand_code}.pdb``,
+        ``{protein_name}_processed.gro``, ``topol.top``, ``posre.itp``
+
+        Notes
+        -----
+        After this method returns, call :meth:`param_with_amber` to
+        parameterise the ligand, then continue with :meth:`gro2itp`,
+        :meth:`generate_ligand_ndx`, :meth:`build_gmx_complex`, and
+        :meth:`build_complex_topology`.
+        """
+        keep_residues = keep_residues or []
+
+        # Convert protein to clean PDB
+        prepare_structure(
+            protein_input,
+            output_name=f"{self.protein_name}_clean",
+            work_dir=self.working_dir,
+            remove_hetatm=remove_hetatm,
+            remove_waters=remove_waters,
+            keep_residues=keep_residues,
+            gmx_executable=self.gmx,
+        )
+
+        # Convert ligand to PDB named {ligand_code}.pdb
+        prepare_structure(
+            ligand_input,
+            output_name=self.ligand_code,
+            work_dir=self.working_dir,
+            ligand_code=self.ligand_code,
+            gmx_executable=self.gmx,
+        )
+
+        print(f"✓  Protein → {self.protein_name}_clean.pdb")
+        print(f"✓  Ligand  → {self.ligand_code}.pdb")
+        self.protein_pdb2gmx()
+
+    # ------------------------------------------------------------------
+    # Path C — pre-separated protein and ligand files
+    # ------------------------------------------------------------------
+
+    def prepare_from_separate_files(
+        self,
+        protein_file: str,
+        ligand_file: str,
+        keep_residues: Optional[list[str]] = None,
+        remove_hetatm: bool = True,
+        remove_waters: bool = True,
+    ) -> None:
+        """
+        Prepare a complex from protein and ligand files that are already
+        separated (e.g. Schrödinger Glide output, manual preparation,
+        or any workflow that delivers two distinct structure files).
+
+        This is a thin convenience wrapper around
+        :meth:`prepare_from_structure` — it accepts the same argument
+        types and produces identical output files.  The distinction
+        exists to make intent explicit in pipeline scripts.
+
+        Parameters
+        ----------
+        protein_file : str
+            Path to the protein-only structure file.  Accepted formats:
+            ``.pdb``, ``.cif`` / ``.mmcif``, ``.gro``.
+        ligand_file : str
+            Path to the ligand-only file.  Accepted formats: ``.pdb``,
+            ``.mol2``, ``.sdf``, ``.mol``.  SMILES strings (``"smiles:..."``)
+            are also accepted.
+        keep_residues : list[str], optional
+            Residue names in the protein file to retain alongside
+            ``ATOM`` records (e.g. metal ions: ``["ZN", "MG"]``).
+        remove_hetatm : bool, optional
+            Strip ``HETATM`` from the protein file.  Defaults to
+            ``True``.
+        remove_waters : bool, optional
+            Strip waters from the protein file.  Defaults to ``True``.
+
+        Output files
+        ------------
+        ``{protein_name}_clean.pdb``, ``{ligand_code}.pdb``,
+        ``{protein_name}_processed.gro``, ``topol.top``, ``posre.itp``
+        """
+        self.prepare_from_structure(
+            protein_input=protein_file,
+            ligand_input=ligand_file,
+            keep_residues=keep_residues,
+            remove_hetatm=remove_hetatm,
+            remove_waters=remove_waters,
+        )
 
     def param_with_amber(
         self,

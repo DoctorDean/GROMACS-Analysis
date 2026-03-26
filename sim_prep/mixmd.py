@@ -112,7 +112,7 @@ class MixMDPrepper(SimulationPrepper):
 
         # MDP templates and config directory
         self.config_dir = (
-            self.script_directory.parent / "config" / "gmx" / "mixmd"
+            self.script_directory.parent / "md-configs" / "mixmd"
         )
         self.mdp_files: dict[str, str] = {
             "ions": "ions_mix",

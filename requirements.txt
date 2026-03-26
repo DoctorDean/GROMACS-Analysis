@@ -1,8 +1,25 @@
 # MDAnalysis-GROMACS – Python dependencies
 # Install with: pip install -r requirements.txt
 #
-# GROMACS itself is NOT installed via pip.
-# See https://manual.gromacs.org/documentation/current/install-guide/index.html
+# ── External non-Python requirements ─────────────────────────────────────────
+#
+# GROMACS (≥ 2019)
+#   Not installed via pip. See:
+#   https://manual.gromacs.org/documentation/current/install-guide/index.html
+#
+# AmberTools (≥ 23) + ACPYPE (≥ 2022.7) + Open Babel (≥ 3.1)
+#   Required only for ligand parameterisation (CplxSimPrepper, MixMDPrepper).
+#   Install via conda — see LIGAND_PARAMETERISATION.md for full instructions:
+#
+#     conda create -n ambertools python=3.10
+#     conda activate ambertools
+#     conda install -c conda-forge ambertools acpype openbabel
+#
+# =============================================================================
+
+
+# ── Core: always required ─────────────────────────────────────────────────────
+# Post-simulation analysis (GromacsAnalysis) and all simulation prep classes
 
 biopython>=1.81
 matplotlib>=3.7
@@ -10,3 +27,26 @@ networkx>=3.1
 numpy>=1.24
 pandas>=2.0
 scipy>=1.11
+
+
+# ── Structure handling: required for non-PDB input formats ───────────────────
+# Enables mmCIF parsing and SDF/MOL2/SMILES → PDB conversion.
+# Install if you use prepare_from_structure() with .cif input,
+# or prepare_from_ligand_file() with .sdf / .mol2 / SMILES input.
+#
+# RDKit is best installed via conda:
+#   conda install -c conda-forge rdkit gemmi
+
+gemmi>=0.6
+rdkit>=2023.3
+
+
+# ── Optional: enhanced structure preparation ─────────────────────────────────
+# PDBFixer cleans common PDB problems (missing residues, non-standard
+# residues, alternate conformations) before passing structures to GROMACS.
+# Recommended for structures sourced directly from the RCSB PDB or AlphaFold.
+#
+# Install via conda:
+#   conda install -c conda-forge pdbfixer
+#
+# pdbfixer>=1.9

@@ -1,7 +1,7 @@
 # Repository Structure
 
 ```
-GROMACS-Analysis/
+mdanalysis-gromacs/
 │
 ├── README.md                   # Project overview and full usage guide
 ├── CHANGELOG.md                # Version history
@@ -31,19 +31,27 @@ GROMACS-Analysis/
 │                               #   multi-probe parameterisation and
 │                               #   insert-molecules workflow
 │
-├── md-configs/                 # MDP template files 
+├── md-configs/                 # MDP template files (not committed to git)
 │   └── gmx/
 │       ├── apo/                # ions.mdp  em.mdp  nvt.mdp  npt.mdp  md.mdp
 │       ├── complex/            # ions_prot_lig.mdp  em_prot_lig.mdp  …
 │       └── mixmd/              # ions_mix.mdp  em_mix.mdp  …
 │
 ├── utils/                      # Internal Python utilities
-│   └── amber_params.py         # AmberParameteriser class
-│                               #   native Python pipeline wrapping:
-│                               #   obabel → antechamber → parmchk2
-│                               #   → tleap → ACPYPE
-│                               #   called by CplxSimPrepper and MixMDPrepper
-│                               #   (replaces the former param_with_amber.sh)
+│   ├── __init__.py
+│   ├── amber_params.py         # AmberParameteriser class
+│   │                           #   native Python pipeline wrapping:
+│   │                           #   obabel → antechamber → parmchk2
+│   │                           #   → tleap → ACPYPE
+│   │                           #   called by CplxSimPrepper and MixMDPrepper
+│   └── structure_io.py         # prepare_structure() — format conversion
+│                               #   .pdb   → clean PDB (filter HETATM, waters,
+│                               #            alt-locs, ANISOU)
+│                               #   .cif / .mmcif → PDB via gemmi
+│                               #   .gro   → PDB via gmx editconf
+│                               #   .mol2  → PDB via RDKit
+│                               #   .sdf / .mol → PDB via RDKit
+│                               #   "smiles:..." → 3-D PDB via RDKit ETKDG
 │
 └── examples/                   # Minimal working examples (no simulation data)
     ├── apo_example.py
@@ -83,7 +91,7 @@ type (e.g. `solvate` in `CplxSimPrepper` starts from `complex.gro`
 rather than `newbox.gro`) and implement the two abstract methods
 `validate_config` and `update_config_files`.
 
-### `config/` 
+### `config/`
 
 MDP template files are system- and force-field-specific and often
 contain values tuned for a particular HPC environment or research
@@ -92,7 +100,33 @@ directory layout shown above is the expected convention; populate it
 with your own templates and set `config_dir` in each subclass if you
 use a different layout.
 
-### Connecting preparation → analysis
+### `CplxSimPrepper` — three input paths
+
+```
+Path A  AutoDock complex PDB     → process_autodocked_complex()
+Path B  Native PDB/mmCIF/GRO                                     ┐
+        + ligand .sdf/.mol2/SMILES → prepare_from_structure()    ├─ all converge at
+Path C  Pre-separated files      → prepare_from_separate_files() ┘  param_with_amber()
+```
+
+All three paths converge at `param_with_amber()` and share all
+subsequent steps.  Choose based on what your upstream workflow produces:
+
+| Upstream tool | Recommended path | Input |
+|---|---|---|
+| AutoDock Vina / Smina | Path A | Docked complex PDB |
+| RCSB / AlphaFold download | Path B | `.cif` + ligand `.sdf` |
+| Schrödinger Glide | Path C | Separate `_prot.pdb` + `_lig.sdf` |
+| Virtual screening hit | Path B | Protein `.pdb` + SMILES string |
+| Manual preparation | Path C | Pre-cleaned protein + ligand PDB |
+
+### MixMD SMILES field
+
+The `ligands` list in `MixMDPrepper` carries a `"smiles"` field per probe
+molecule.  This is currently stored for reference and used when generating
+input PDB files for parameterisation via `prepare_structure()`.  If you
+have pre-built PDB or MOL2 files for your probes, set `"smiles"` to `None`
+and pass the file path instead.
 
 After `production_run()` completes, hand off to `GromacsAnalysis`:
 

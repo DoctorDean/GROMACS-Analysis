@@ -8,7 +8,7 @@ Before running
 --------------
 1. Place your protein PDB in the working directory, e.g.
    ``/data/simulations/hsp90_mixmd/hsp90.pdb``
-2. Populate ``config/gmx/mixmd/`` with your MDP templates.
+2. Populate ``md-configs/mixmd/`` with your MDP templates.
 3. Ensure ``gmx``, ``antechamber``, and ``acpype`` are on your PATH.
 4. Install dependencies:  ``pip install -r requirements.txt``
 
@@ -26,7 +26,7 @@ concentration from the literature.
 """
 
 from pathlib import Path
-from base import MixMDPrepper
+from sim_prep.mixmd import MixMDPrepper
 
 WORK_DIR     = Path("/data/simulations/hsp90_mixmd")
 PROTEIN_NAME = "hsp90"
