@@ -9,8 +9,8 @@ Thank you for considering a contribution. This document covers how to set up a d
 ### 1. Fork and clone
 
 ```bash
-git clone https://github.com/<your-fork>/mdanalysis-gromacs.git
-cd mdanalysis-gromacs
+git clone https://github.com/<your-fork>/GROMACS-Analysis.git
+cd GROMACS-Analysis
 ```
 
 ### 2. Create a development environment
@@ -66,7 +66,7 @@ All GROMACS subprocess calls must go through `self._run()`.  Do not call `subpro
 
 ## Reporting bugs
 
-Open a [GitHub Issue](https://github.com/<your-username>/mdanalysis-gromacs/issues) with:
+Open a [GitHub Issue](https://github.com/DoctorDean/GROMACS-Analysis/issues) with:
 
 - Your GROMACS version (`gmx --version`)
 - Your Python version (`python --version`)

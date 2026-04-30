@@ -171,8 +171,9 @@ class CplxSimPrepper(SimulationPrepper):
 
         # MDP templates and config directory
         self.config_dir = (
-            self.script_directory.parent / "config" / "gmx" / "complex"
+            self.script_directory.parent / "md-configs" / "complex"
         )
+
         self.mdp_files: dict[str, str] = {
             "ions": "ions_prot_lig",
             "em":   "em_prot_lig",

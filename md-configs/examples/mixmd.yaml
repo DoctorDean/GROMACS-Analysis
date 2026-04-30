@@ -1,0 +1,131 @@
+# =============================================================================
+# Mixed-solvent (MixMD) simulation configuration
+# =============================================================================
+# Usage:
+#   from sim_prep.config import load_config
+#   sim = load_config("mixmd.yaml")
+#
+# MixMD simulations co-solvate a protein with organic probe molecules at
+# defined concentrations to identify cryptic binding sites, hotspots, and
+# allosteric pockets. Each probe is parameterised independently with
+# AmberTools/ACPYPE, then copies are inserted into the simulation box with
+# gmx insert-molecules.
+#
+# Prerequisites:
+#   - AmberTools, ACPYPE, and Open Babel must be on PATH
+#   - See LIGAND_PARAMETERISATION.md for setup instructions
+#   - {protein_name}.pdb must exist in work_dir
+#   - Each ligand's {code}.pdb must exist in work_dir, OR provide a SMILES
+#     string and the PDB will be generated automatically via RDKit ETKDG
+# =============================================================================
+
+type: mixmd
+
+# =============================================================================
+# Required parameters
+# =============================================================================
+
+# Stem of the protein PDB file (without .pdb extension)
+protein_name: hsp90
+
+# Production run length in nanoseconds
+# MixMD simulations typically require longer runs (100–500 ns) to allow
+# probe molecules to sample the full protein surface
+sim_len: 100
+
+# Simulation box shape
+# dodecahedron is strongly recommended
+bx_shp: dodecahedron
+
+# Box padding in nanometres
+# Use a larger value than standard (1.5 nm recommended) to accommodate
+# the additional probe molecules without box geometry clashes
+bx_dim: 1.5
+
+# Stem for production run output files
+md_name: md_production
+
+# =============================================================================
+# Counter-ions
+# =============================================================================
+
+pos_ion: NA
+neg_ion: CL
+
+# =============================================================================
+# Paths
+# =============================================================================
+
+work_dir: /data/simulations/hsp90_mixmd
+
+# =============================================================================
+# Probe molecules
+# =============================================================================
+# Each probe requires three fields:
+#
+#   code   (str)  Three-letter residue code. Used in all file names and
+#                 topology entries. Must be unique across all probes.
+#
+#   number (int)  Number of copies to insert into the simulation box.
+#                 Rough concentration guide for a ~60×60×60 Å dodecahedron:
+#                   ~100 copies ≈ 100 mM
+#                   ~50  copies ≈ 50 mM
+#                 Adjust to match your target co-solvent concentration.
+#                 Too many probes will cause insert-molecules to fail if
+#                 the box is too small — increase bx_dim if needed.
+#
+#   smiles (str)  SMILES string for the probe molecule. Used to generate
+#                 a starting PDB via RDKit if {code}.pdb is not present
+#                 in work_dir. Set to null if providing the PDB manually.
+
+ligands:
+  - code: ACT
+    number: 50
+    smiles: "CC(=O)[O-]"         # acetate
+
+  - code: MSE
+    number: 20
+    smiles: "CSCC[C@@H](N)C(=O)O"  # methionine analogue
+
+  - code: BNZ
+    number: 30
+    smiles: "c1ccccc1"           # benzene (apolar probe)
+
+  - code: IMD
+    number: 25
+    smiles: "c1cn[nH]c1"         # imidazole (H-bond donor/acceptor probe)
+
+# =============================================================================
+# Per-ligand net formal charges (optional)
+# =============================================================================
+# Specify the net charge for each probe that carries a formal charge.
+# Probes not listed here use automatic charge inference by antechamber.
+# Incorrect charges are the most common cause of parameterisation failure.
+#
+# Charge guide:
+#   carboxylate / acetate:  -1
+#   phosphate (mono):       -1
+#   phosphate (di):         -2
+#   protonated amine:       +1
+#   neutral organic:         0
+
+net_charges:
+  ACT: -1    # acetate carries net -1 charge
+  MSE: 0     # neutral at physiological pH
+  BNZ: 0     # neutral
+  IMD: 0     # neutral (unprotonated imidazole)
+
+# =============================================================================
+# Parameterisation settings
+# =============================================================================
+
+# GAFF atom type scheme applied to all probes
+# Options: gaff | gaff2
+# atom_type: gaff
+
+# =============================================================================
+# Optional overrides
+# =============================================================================
+
+# gmx_executable: gmx_mpi
+# index_file: index.ndx

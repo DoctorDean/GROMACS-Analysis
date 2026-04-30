@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (large files, tracked via DVC or git-lfs)
+data/targets/*/structures/
+data/templates/germline_vhh/*.pdb
+data/results/round_*/predictions/
+*.sdf
+*.mol2
+*.pdb
+!data/targets/*/*.sdf
+
+# AlphaFold databases (too large for git)
+alphafold_db/
+
+# Model weights
+*.pt
+*.ckpt
+*.h5
+
+# Experiment tracking
+wandb/
+mlruns/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Temporary
+/tmp/
+*.tmp
+/.idea

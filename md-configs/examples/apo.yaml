@@ -1,0 +1,79 @@
+# =============================================================================
+# Apo protein simulation configuration
+# =============================================================================
+# Usage:
+#   from sim_prep.config import load_config
+#   sim = load_config("apo.yaml")
+#
+# Or to run the full pipeline immediately:
+#   sim = load_config("apo.yaml", run_all=True)
+#
+# Generate a fresh copy of this template at any time:
+#   from sim_prep.config import generate_template
+#   generate_template("apo", "my_sim.yaml")
+# =============================================================================
+
+# Simulation type — must be exactly "apo", "complex", or "mixmd"
+type: apo
+
+# =============================================================================
+# Required parameters
+# =============================================================================
+
+# Stem of the input PDB file in work_dir (without .pdb extension)
+# The file {protein_name}.pdb must exist in work_dir before running
+protein_name: hsp90
+
+# Production run length in nanoseconds
+# Range: 0.001 – 10000 ns
+sim_len: 100
+
+# Simulation box shape
+# Options: cubic | dodecahedron | triclinic | octahedron
+# dodecahedron is recommended for globular proteins — ~29% less solvent
+# than a cubic box of equivalent protein-to-wall distance
+bx_shp: dodecahedron
+
+# Minimum distance from protein surface to box edge (nanometres)
+# Range: 0.5 – 5.0 nm
+# 1.0 nm is the standard for most protein simulations
+bx_dim: 1.0
+
+# Stem used for all production run output files
+# Outputs will be: {md_name}.tpr, {md_name}.xtc, {md_name}.gro, etc.
+md_name: md_production
+
+# =============================================================================
+# Counter-ions for system neutralisation
+# =============================================================================
+
+# Positive counter-ion
+# Options: NA | K | MG | CA | ZN
+pos_ion: NA
+
+# Negative counter-ion
+# Options: CL
+neg_ion: CL
+
+# =============================================================================
+# Paths
+# =============================================================================
+
+# Absolute path to the simulation working directory
+# This directory must contain {protein_name}.pdb and will receive all outputs
+work_dir: /data/simulations/hsp90_apo
+
+# =============================================================================
+# Optional overrides
+# =============================================================================
+
+# Override the GROMACS executable name or provide a full path
+# Useful on HPC systems where the binary is named differently (e.g. gmx_mpi)
+# Default: gmx
+# gmx_executable: gmx_mpi
+
+# Path to a custom GROMACS index file (.ndx)
+# Required if your system uses non-standard group definitions
+# (e.g. membrane systems, multi-chain proteins, specific residue selections)
+# Default: none (GROMACS uses built-in groups)
+# index_file: index.ndx

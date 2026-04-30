@@ -1,0 +1,193 @@
+[build-system]
+requires      = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+
+# =============================================================================
+# Project metadata
+# =============================================================================
+
+[project]
+name        = "GROMACS-Analysis"
+version     = "1.2.0"
+description = "An integrated Python toolkit for GROMACS simulation preparation and trajectory analysis"
+readme      = "README.md"
+license     = { file = "LICENSE" }
+requires-python = ">=3.10"
+
+authors = [
+    { name = "Dean Sherry"},
+]
+
+keywords = [
+    "molecular dynamics",
+    "GROMACS",
+    "structural biology",
+    "protein simulation",
+    "trajectory analysis",
+    "free energy landscape",
+    "principal component analysis",
+    "mixed-solvent MD",
+    "computational drug discovery",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+# Core dependencies — always required
+dependencies = [
+    "biopython>=1.81",
+    "matplotlib>=3.7",
+    "networkx>=3.1",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "scipy>=1.11",
+]
+
+
+# =============================================================================
+# Optional dependency groups
+# =============================================================================
+
+[project.optional-dependencies]
+
+# Structure format conversion: mmCIF, SDF, MOL2, SMILES
+# Required for prepare_from_structure() with non-PDB inputs
+# Install via conda for RDKit: conda install -c conda-forge rdkit gemmi
+structure = [
+    "gemmi>=0.6",
+    "rdkit>=2023.3",
+]
+
+# Enhanced structure preparation: missing residues, non-standard residues
+# Recommended for structures from RCSB PDB or AlphaFold
+# Install via conda: conda install -c conda-forge pdbfixer
+prep = [
+    "pdbfixer>=1.9",
+]
+
+# Development: testing, linting, type-checking
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.1",
+    "mypy>=1.5",
+    "types-PyYAML>=6.0",
+]
+
+# Documentation
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=1.3",
+    "numpydoc>=1.6",
+]
+
+# Install everything
+all = [
+    "GROMACS-Analysis[structure,prep,dev,docs]",
+]
+
+
+# =============================================================================
+# Project URLs
+# =============================================================================
+
+[project.urls]
+Homepage      = "https://github.com/DoctorDean/GROMACS-Analysis"
+Repository    = "https://github.com/DoctorDean/GROMACS-Analysis"
+Documentation = "https://github.com/DoctorDean/GROMACS-Analysis#readme"
+"Bug Tracker" = "https://github.com/DoctorDean/GROMACS-Analysis/issues"
+Changelog     = "https://github.com/DoctorDean/GROMACS-Analysis/blob/main/CHANGELOG.md"
+
+
+# =============================================================================
+# Package discovery
+# =============================================================================
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["sim_prep*", "utils*"]
+exclude = ["tests*", "examples*", "config*", "docs*"]
+
+[tool.setuptools.package-data]
+"sim_prep" = ["py.typed"]
+"utils"    = ["py.typed"]
+
+
+# =============================================================================
+# pytest configuration
+# =============================================================================
+
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "integration: tests that require GROMACS to be installed",
+]
+
+
+# =============================================================================
+# Coverage configuration
+# =============================================================================
+
+[tool.coverage.run]
+source  = ["sim_prep", "utils", "gromacs_analysis"]
+omit    = ["tests/*", "examples/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+]
+show_missing = true
+
+
+# =============================================================================
+# Ruff linter configuration
+# =============================================================================
+
+[tool.ruff]
+line-length    = 99
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long — handled by formatter
+    "B008",  # do not perform function calls in default arguments
+]
+exclude = ["examples/", "docs/"]
+
+
+# =============================================================================
+# Mypy type-checking configuration
+# =============================================================================
+
+[tool.mypy]
+python_version         = "3.10"
+warn_return_any        = true
+warn_unused_configs    = true
+ignore_missing_imports = true   # many scientific packages lack stubs

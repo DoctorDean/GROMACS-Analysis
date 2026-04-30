@@ -1,0 +1,121 @@
+# =============================================================================
+# Protein–ligand complex simulation configuration
+# =============================================================================
+# Usage:
+#   from sim_prep.config import load_config
+#   sim = load_config("complex.yaml")
+#
+# Three input paths are supported — uncomment the relevant section below.
+# All three converge at ligand parameterisation and share all subsequent steps.
+#
+#   Path A — AutoDock complex PDB (default)
+#     A single PDB containing both protein and docked ligand, as produced
+#     by AutoDock Vina, Smina, or similar docking tools.
+#
+#   Path B — Native structure + separate ligand
+#     Protein from RCSB PDB / AlphaFold (.pdb, .cif, .mmcif) with a ligand
+#     provided as a separate file (.sdf, .mol2, .pdb) or as a SMILES string.
+#
+#   Path C — Pre-separated files
+#     Protein and ligand already in separate files from Schrödinger Glide,
+#     manual preparation, or any other upstream workflow.
+#
+# Paths B and C are activated by providing protein_input and ligand_input.
+# If these keys are absent, Path A is used.
+# =============================================================================
+
+type: complex
+
+# =============================================================================
+# Required parameters
+# =============================================================================
+
+# For Path A: stem of the docked complex PDB file (without .pdb extension)
+# For Paths B/C: stem used for all output files
+protein_name: hsp90_ATP
+
+# Three-letter residue code for the ligand
+# This code is used in all output file names and topology entries
+ligand_code: ATP
+
+# Production run length in nanoseconds
+sim_len: 100
+
+# Simulation box shape
+# dodecahedron is strongly recommended for protein–ligand systems
+bx_shp: dodecahedron
+
+# Minimum distance from system surface to box edge (nanometres)
+# 1.0 nm is standard; consider 1.2 nm for larger ligands
+bx_dim: 1.0
+
+# Stem for all production run output files
+md_name: md_production
+
+# =============================================================================
+# Counter-ions
+# =============================================================================
+
+pos_ion: NA
+neg_ion: CL
+
+# =============================================================================
+# Paths
+# =============================================================================
+
+work_dir: /data/simulations/hsp90_ATP
+
+# =============================================================================
+# PATH A — AutoDock complex (active by default)
+# =============================================================================
+# Residue name used for the ligand in the docked PDB
+# AutoDock Vina uses "UNL" by default; some tools use "UNK" or the ligand name
+param_ligand_name: UNL
+
+# Residue names to strip from the complex PDB to produce the protein-only file
+# that is passed to gmx pdb2gmx. Must include param_ligand_name.
+remove_ligands:
+  - UNL
+
+# =============================================================================
+# PATH B / C — Native structure or pre-separated files
+# =============================================================================
+# Uncomment and set these keys to use Path B or Path C instead of Path A.
+# When protein_input and ligand_input are both present, Path A is ignored.
+
+# Protein structure file
+# Accepted formats: .pdb  .cif  .mmcif  .gro
+# protein_input: 6lu7.cif
+
+# Ligand structure file or inline SMILES string
+# Accepted formats: .pdb  .mol2  .sdf  .mol  smiles:<string>
+# ligand_input: N3_inhibitor.sdf
+# ligand_input: smiles:CC(=O)Nc1ccc(O)cc1
+
+# HETATM residue names to retain alongside protein ATOM records
+# Use for metal ions or co-factors that are part of the active site
+# keep_residues:
+#   - ZN
+#   - MG
+
+# =============================================================================
+# Ligand parameterisation settings
+# =============================================================================
+
+# Net formal charge of the ligand
+# IMPORTANT: incorrect charge is the most common cause of antechamber failure
+# Count: each phosphate group = -1, carboxylate = -1, protonated amine = +1
+# Omit this key (or set to null) to let antechamber infer the charge
+# net_charge: -4
+
+# GAFF atom type scheme
+# Options: gaff | gaff2
+# gaff2 has broader coverage of modern drug-like fragments
+# atom_type: gaff
+
+# =============================================================================
+# Optional overrides
+# =============================================================================
+
+# gmx_executable: gmx_mpi
+# index_file: index.ndx

@@ -7,18 +7,22 @@ Workflow
 --------
 After a GROMACS MD simulation completes, the typical post-processing pipeline is:
 
-    1. Remove periodic boundary conditions  →  nopbc_and_fit()
-    2. Compute RMSD / RMSF / Rg            →  essential_dynamics()
-    3. Covariance / PCA analysis            →  covariance_analysis()
-    4. Convert covariance → DCCM            →  covariance_to_correlation()
-    5. Plot the DCCM heatmap               →  plot_dccm()
-    6. Build & analyse correlation network  →  correlation_network()
-    7. Plot the weighted network            →  plot_correlation_network()
-    8. Project trajectory onto N PCs        →  project_pca()
-    9. Compute free energy landscape        →  free_energy_landscape()
-   10. Plot 3D FEL + gradient magnitude     →  plot_free_energy_3d()
-   11. Colour PDB by RMSF                  →  colour_pdb_by_rmsf()
-   12. Colour PDB by network centrality    →  colour_pdb_by_centrality()
+    1.  Remove periodic boundary conditions  →  nopbc_and_fit()
+    2.  Compute RMSD / RMSF / Rg            →  essential_dynamics()
+    3.  Hydrogen bond analysis              →  hbond_analysis()
+    4.  Plot H-bond occupancy               →  plot_hbond_occupancy()
+    5.  SASA analysis                       →  sasa_analysis()
+    6.  Plot SASA over time                 →  plot_sasa()
+    7.  Covariance / PCA analysis           →  covariance_analysis()
+    8.  Convert covariance → DCCM           →  covariance_to_correlation()
+    9.  Plot the DCCM heatmap              →  plot_dccm()
+   10.  Build & analyse correlation network  →  correlation_network()
+   11.  Plot the weighted network           →  plot_correlation_network()
+   12.  Project trajectory onto N PCs       →  project_pca()
+   13.  Compute free energy landscape       →  free_energy_landscape()
+   14.  Plot 3D FEL + gradient magnitude    →  plot_free_energy_3d()
+   15.  Colour PDB by RMSF                 →  colour_pdb_by_rmsf()
+   16.  Colour PDB by network centrality   →  colour_pdb_by_centrality()
 
 Example usage
 -------------
@@ -75,6 +79,7 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter
 from Bio.PDB import PDBParser, PDBIO, Structure
+import yaml
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +340,499 @@ class GromacsAnalysis:
         self._run(rg_command, rg_selection, "Radius of gyration calculation")
 
     # ------------------------------------------------------------------
-    # 3. Covariance / PCA analysis
+    # 3. Hydrogen bond analysis
+    # ------------------------------------------------------------------
+
+    def hbond_analysis(
+        self,
+        donor_group: str = "Protein",
+        acceptor_group: str = "Protein",
+        time_unit: str = "ns",
+        cutoff_dist: float = 0.35,
+        cutoff_angle: float = 30.0,
+        begin: Optional[float] = None,
+        end: Optional[float] = None,
+    ) -> dict[str, np.ndarray]:
+        """
+        Analyse hydrogen bonds over the trajectory using ``gmx hbond``.
+
+        Computes the number of H-bonds as a function of time and the
+        per-donor-acceptor-pair occupancy (fraction of frames in which
+        each bond exists).  For protein–ligand simulations, set
+        ``donor_group="Protein"`` and ``acceptor_group`` to the ligand
+        residue name to extract interface H-bonds.
+
+        Parameters
+        ----------
+        donor_group : str, optional
+            GROMACS selection group for H-bond donors.  Defaults to
+            ``"Protein"``.  Use a group name from your index file for
+            specific selections (e.g. ``"Protein"`` vs ``"LIG"``).
+        acceptor_group : str, optional
+            GROMACS selection group for H-bond acceptors.  Defaults to
+            ``"Protein"`` (intra-protein H-bonds).  Set to your ligand
+            group name for protein–ligand H-bond analysis.
+        time_unit : str, optional
+            Time unit for the x-axis of output XVG files.  Defaults to
+            ``"ns"``.
+        cutoff_dist : float, optional
+            Donor-acceptor distance cutoff in nm.  Defaults to ``0.35``
+            (GROMACS default; Baker-Hubbard criterion).
+        cutoff_angle : float, optional
+            Maximum donor–H···acceptor angle deviation from linearity
+            in degrees.  Defaults to ``30.0``.
+        begin : float, optional
+            Start time for analysis (in ``time_unit``).
+        end : float, optional
+            End time for analysis.
+
+        Output files
+        ------------
+        ``hbond_num_{protein_name}.xvg``
+            Number of H-bonds per frame over time.
+        ``hbond_dist_{protein_name}.xvg``
+            H-bond donor–acceptor distance distribution.
+        ``hbond_ang_{protein_name}.xvg``
+            H-bond angle distribution.
+        ``hbond_matrix_{protein_name}.xpm``
+            Existence matrix — each row is a donor–acceptor pair,
+            each column a frame.  Use ``gmx xpm2ps`` to render.
+        ``hbond_occupancy_{protein_name}.csv``
+            Per-pair occupancy table: columns ``donor``, ``acceptor``,
+            ``occupancy``, ``mean_dist_nm``.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Dictionary with keys ``"time"`` and ``"n_hbonds"`` — the
+            time series arrays parsed from the XVG output.
+        """
+        fitted_xtc = f"{self.md_name}_fitted.xtc"
+        tpr        = f"{self.md_name}.tpr"
+        num_out    = f"hbond_num_{self.protein_name}.xvg"
+        dist_out   = f"hbond_dist_{self.protein_name}.xvg"
+        ang_out    = f"hbond_ang_{self.protein_name}.xvg"
+        mat_out    = f"hbond_matrix_{self.protein_name}.xpm"
+
+        hbond_cmd = [
+            self.gmx, "hbond",
+            "-s",  tpr,
+            "-f",  fitted_xtc,
+            "-num", num_out,
+            "-dist", dist_out,
+            "-ang",  ang_out,
+            "-hbm",  mat_out,
+            *self._ndx_flag(),
+            "-r",  str(cutoff_dist),
+            "-a",  str(cutoff_angle),
+            "-tu", time_unit,
+        ]
+        if begin is not None:
+            hbond_cmd += ["-b", str(begin)]
+        if end is not None:
+            hbond_cmd += ["-e", str(end)]
+
+        # gmx hbond prompts: donor group then acceptor group
+        selection = f"{donor_group}\n{acceptor_group}\n"
+        self._run(hbond_cmd, selection, "Hydrogen bond analysis")
+
+        # ---- Parse number-over-time XVG ------------------------------------
+        time_vals, n_hbonds = self._parse_xvg(num_out)
+
+        # ---- Derive per-pair occupancy from the XPM matrix ----------------
+        occ_path = self.work_dir / f"hbond_occupancy_{self.protein_name}.csv"
+        self._parse_hbond_matrix(mat_out, occ_path)
+
+        mean_occ = float(np.mean(n_hbonds)) if len(n_hbonds) else 0.0
+        print(
+            f"✓  H-bond analysis complete  |  "
+            f"mean {mean_occ:.1f} bonds  |  "
+            f"occupancy table → {occ_path.name}"
+        )
+        return {"time": time_vals, "n_hbonds": n_hbonds}
+
+    def _parse_hbond_matrix(self, xpm_path: str, out_csv: Path) -> None:
+        """
+        Parse a GROMACS XPM hydrogen-bond existence matrix and write a
+        per-pair occupancy CSV.
+
+        The XPM format encodes a binary matrix where each row represents
+        a donor–acceptor pair and each column a trajectory frame.  A
+        ``"o"`` character indicates the bond exists in that frame.
+
+        Parameters
+        ----------
+        xpm_path : str
+            Path to the ``hbond_matrix.xpm`` file.
+        out_csv : Path
+            Destination CSV path for the occupancy table.
+        """
+        rows: list[str]  = []
+        y_labels: list[str] = []
+
+        with open(xpm_path) as fh:
+            lines = fh.readlines()
+
+        # Extract y-axis labels (donor–acceptor pair names) and data rows
+        in_data = False
+        for line in lines:
+            if line.strip().startswith('"') and "/*" not in line:
+                content = line.strip().strip('"').rstrip('",')
+                if in_data:
+                    rows.append(content)
+                else:
+                    in_data = True   # first quoted string block after header
+            if "y-axis" in line:
+                label = line.split('"')[1] if '"' in line else ""
+                if label:
+                    y_labels.append(label)
+
+        # Occupancy = fraction of frames where bond exists ("o" or "1")
+        records: list[dict] = []
+        for i, row_str in enumerate(rows):
+            n_frames   = len(row_str)
+            n_present  = row_str.count("o") + row_str.count("1")
+            occupancy  = n_present / n_frames if n_frames > 0 else 0.0
+            label      = y_labels[i] if i < len(y_labels) else f"pair_{i}"
+            parts      = label.split("-") if "-" in label else [label, ""]
+            records.append({
+                "pair":       label,
+                "donor":      parts[0].strip(),
+                "acceptor":   parts[1].strip() if len(parts) > 1 else "",
+                "occupancy":  round(occupancy, 4),
+            })
+
+        df = pd.DataFrame(records).sort_values("occupancy", ascending=False)
+        df.to_csv(str(out_csv), index=False)
+
+    def plot_hbond_occupancy(
+        self,
+        csv_file: Optional[str] = None,
+        xvg_file: Optional[str] = None,
+        top_n: int = 20,
+        occupancy_threshold: float = 0.1,
+        time_unit: str = "ns",
+        figsize_bar: tuple[int, int] = (10, 6),
+        figsize_time: tuple[int, int] = (12, 4),
+        color_bar: str = "steelblue",
+        dpi: int = 150,
+    ) -> None:
+        """
+        Produce two H-bond figures from the output of :meth:`hbond_analysis`.
+
+        **Figure 1** (``hbond_occupancy_{protein_name}.png``) — horizontal
+        bar chart of the top-N donor–acceptor pairs by occupancy.  Only
+        pairs above ``occupancy_threshold`` are shown.
+
+        **Figure 2** (``hbond_timeseries_{protein_name}.png``) — number
+        of H-bonds as a function of simulation time with a rolling mean
+        overlay.
+
+        Parameters
+        ----------
+        csv_file : str, optional
+            Path to the occupancy CSV.  Defaults to
+            ``hbond_occupancy_{protein_name}.csv``.
+        xvg_file : str, optional
+            Path to the number-over-time XVG.  Defaults to
+            ``hbond_num_{protein_name}.xvg``.
+        top_n : int, optional
+            Maximum number of pairs to show in the bar chart.  Defaults
+            to 20.
+        occupancy_threshold : float, optional
+            Pairs below this occupancy are excluded from the bar chart.
+            Defaults to 0.1 (10 %).
+        time_unit : str, optional
+            Label for the time axis.  Defaults to ``"ns"``.
+        figsize_bar : tuple of int, optional
+            Figure size for the occupancy bar chart.  Defaults to
+            ``(10, 6)``.
+        figsize_time : tuple of int, optional
+            Figure size for the time-series plot.  Defaults to
+            ``(12, 4)``.
+        color_bar : str, optional
+            Bar colour.  Defaults to ``"steelblue"``.
+        dpi : int, optional
+            Resolution of saved figures.  Defaults to 150.
+
+        Output files
+        ------------
+        ``hbond_occupancy_{protein_name}.png``
+        ``hbond_timeseries_{protein_name}.png``
+        """
+        # ---- Figure 1: occupancy bar chart ---------------------------------
+        csv_path = csv_file or str(
+            self.work_dir / f"hbond_occupancy_{self.protein_name}.csv"
+        )
+        df = pd.read_csv(csv_path)
+        df = df[df["occupancy"] >= occupancy_threshold].head(top_n)
+
+        fig1, ax1 = plt.subplots(figsize=figsize_bar)
+        ax1.barh(df["pair"], df["occupancy"], color=color_bar, edgecolor="white")
+        ax1.set_xlabel("Occupancy (fraction of frames)", fontsize=12)
+        ax1.set_title(
+            f"H-bond Occupancy – {self.protein_name}\n"
+            f"(threshold ≥ {occupancy_threshold:.0%}, top {len(df)})",
+            fontsize=13,
+        )
+        ax1.set_xlim(0, 1)
+        ax1.invert_yaxis()
+        ax1.axvline(0.5, color="crimson", linestyle="--",
+                    linewidth=0.8, label="50 % occupancy")
+        ax1.axvline(0.3, color="orange", linestyle="--",
+                    linewidth=0.8, label="30 % occupancy")
+        ax1.legend(fontsize=9)
+        fig1.tight_layout()
+        out1 = self.work_dir / f"hbond_occupancy_{self.protein_name}.png"
+        fig1.savefig(str(out1), dpi=dpi)
+        plt.close(fig1)
+        print(f"✓  H-bond occupancy figure saved → {out1}")
+
+        # ---- Figure 2: number over time with rolling mean ------------------
+        xvg_path = xvg_file or str(
+            self.work_dir / f"hbond_num_{self.protein_name}.xvg"
+        )
+        time_vals, n_hbonds = self._parse_xvg(xvg_path)
+        window = max(1, len(time_vals) // 50)   # ~2 % of trajectory width
+        rolling_mean = pd.Series(n_hbonds).rolling(window, center=True).mean()
+
+        fig2, ax2 = plt.subplots(figsize=figsize_time)
+        ax2.plot(time_vals, n_hbonds, alpha=0.35, color=color_bar,
+                 linewidth=0.6, label="Raw")
+        ax2.plot(time_vals, rolling_mean, color="navy",
+                 linewidth=1.5, label=f"Rolling mean (window={window})")
+        ax2.set_xlabel(f"Time ({time_unit})", fontsize=12)
+        ax2.set_ylabel("Number of H-bonds", fontsize=12)
+        ax2.set_title(f"H-bonds Over Time – {self.protein_name}", fontsize=13)
+        ax2.legend(fontsize=9)
+        fig2.tight_layout()
+        out2 = self.work_dir / f"hbond_timeseries_{self.protein_name}.png"
+        fig2.savefig(str(out2), dpi=dpi)
+        plt.close(fig2)
+        print(f"✓  H-bond time series figure saved → {out2}")
+
+    # ------------------------------------------------------------------
+    # 4. SASA analysis
+    # ------------------------------------------------------------------
+
+    def sasa_analysis(
+        self,
+        group: str = "Protein",
+        time_unit: str = "ns",
+        probe_radius: float = 0.14,
+        begin: Optional[float] = None,
+        end: Optional[float] = None,
+    ) -> dict[str, np.ndarray]:
+        """
+        Compute solvent-accessible surface area (SASA) over the trajectory
+        using ``gmx sasa``.
+
+        SASA measures the surface of the protein accessible to solvent.
+        Monitoring total SASA over time reveals folding/unfolding events,
+        large-scale conformational changes, and convergence of the
+        simulation.  Per-residue SASA identifies buried and exposed regions
+        and can highlight binding-site occlusion upon ligand binding.
+
+        Parameters
+        ----------
+        group : str, optional
+            GROMACS selection group to compute SASA for.  Defaults to
+            ``"Protein"``.
+        time_unit : str, optional
+            Time unit for the output XVG files.  Defaults to ``"ns"``.
+        probe_radius : float, optional
+            Radius of the solvent probe sphere in nm.  Defaults to
+            ``0.14`` nm (radius of a water molecule, GROMACS default).
+        begin : float, optional
+            Start time for the analysis (in ``time_unit``).
+        end : float, optional
+            End time for the analysis.
+
+        Output files
+        ------------
+        ``sasa_total_{protein_name}.xvg``
+            Total SASA per frame over time (nm²).
+        ``sasa_residue_{protein_name}.xvg``
+            Time-averaged per-residue SASA (nm²).
+        ``sasa_residue_{protein_name}.csv``
+            Per-residue SASA parsed from the XVG as a tidy CSV with
+            columns ``residue`` and ``sasa_nm2``.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Dictionary with keys:
+
+            ``"time"``         – simulation time array
+            ``"total_sasa"``   – total SASA per frame (nm²)
+            ``"res_index"``    – residue index array
+            ``"res_sasa"``     – per-residue mean SASA (nm²)
+        """
+        fitted_xtc  = f"{self.md_name}_fitted.xtc"
+        tpr         = f"{self.md_name}.tpr"
+        total_out   = f"sasa_total_{self.protein_name}.xvg"
+        residue_out = f"sasa_residue_{self.protein_name}.xvg"
+
+        sasa_cmd = [
+            self.gmx, "sasa",
+            "-s",    tpr,
+            "-f",    fitted_xtc,
+            "-o",    total_out,
+            "-or",   residue_out,
+            *self._ndx_flag(),
+            "-probe", str(probe_radius),
+            "-tu",    time_unit,
+        ]
+        if begin is not None:
+            sasa_cmd += ["-b", str(begin)]
+        if end is not None:
+            sasa_cmd += ["-e", str(end)]
+
+        self._run(sasa_cmd, group, "SASA calculation")
+
+        # ---- Parse total SASA time series ----------------------------------
+        time_vals, total_sasa = self._parse_xvg(total_out)
+
+        # ---- Parse per-residue SASA ----------------------------------------
+        res_index, res_sasa = self._parse_xvg(residue_out)
+        csv_path = self.work_dir / f"sasa_residue_{self.protein_name}.csv"
+        pd.DataFrame({
+            "residue":  res_index.astype(int),
+            "sasa_nm2": res_sasa,
+        }).to_csv(str(csv_path), index=False)
+
+        mean_total = float(np.mean(total_sasa)) if len(total_sasa) else 0.0
+        print(
+            f"✓  SASA analysis complete  |  "
+            f"mean total {mean_total:.2f} nm²  |  "
+            f"per-residue → {csv_path.name}"
+        )
+        return {
+            "time":       time_vals,
+            "total_sasa": total_sasa,
+            "res_index":  res_index,
+            "res_sasa":   res_sasa,
+        }
+
+    def plot_sasa(
+        self,
+        sasa_data: Optional[dict[str, np.ndarray]] = None,
+        total_xvg: Optional[str] = None,
+        residue_csv: Optional[str] = None,
+        time_unit: str = "ns",
+        figsize_time: tuple[int, int] = (12, 4),
+        figsize_res:  tuple[int, int] = (12, 4),
+        color_time: str = "teal",
+        cmap_res: str = "YlOrRd",
+        dpi: int = 150,
+    ) -> None:
+        """
+        Produce two SASA figures from the output of :meth:`sasa_analysis`.
+
+        **Figure 1** (``sasa_timeseries_{protein_name}.png``) — total SASA
+        over time with a rolling mean overlay and a horizontal reference line
+        at the mean value.
+
+        **Figure 2** (``sasa_residue_{protein_name}.png``) — per-residue mean
+        SASA as a colour-mapped bar chart, making buried (low) and exposed
+        (high) regions immediately visible.
+
+        Parameters
+        ----------
+        sasa_data : dict[str, np.ndarray], optional
+            Dictionary returned directly by :meth:`sasa_analysis`.  If
+            ``None``, falls back to loading from files.
+        total_xvg : str, optional
+            Path to the total SASA XVG.  Defaults to
+            ``sasa_total_{protein_name}.xvg``.
+        residue_csv : str, optional
+            Path to the per-residue CSV.  Defaults to
+            ``sasa_residue_{protein_name}.csv``.
+        time_unit : str, optional
+            Label for the time axis.  Defaults to ``"ns"``.
+        figsize_time : tuple of int, optional
+            Figure size for the time-series plot.
+        figsize_res : tuple of int, optional
+            Figure size for the per-residue bar chart.
+        color_time : str, optional
+            Line colour for the time-series.  Defaults to ``"teal"``.
+        cmap_res : str, optional
+            Colormap for the per-residue bars.  Defaults to
+            ``"YlOrRd"`` (yellow→red, low→high exposure).
+        dpi : int, optional
+            Figure resolution.  Defaults to 150.
+
+        Output files
+        ------------
+        ``sasa_timeseries_{protein_name}.png``
+        ``sasa_residue_{protein_name}.png``
+        """
+        # ---- Figure 1: total SASA over time --------------------------------
+        if sasa_data is not None:
+            time_vals  = sasa_data["time"]
+            total_sasa = sasa_data["total_sasa"]
+        else:
+            xvg = total_xvg or str(
+                self.work_dir / f"sasa_total_{self.protein_name}.xvg"
+            )
+            time_vals, total_sasa = self._parse_xvg(xvg)
+
+        window       = max(1, len(time_vals) // 50)
+        rolling_mean = pd.Series(total_sasa).rolling(window, center=True).mean()
+        mean_val     = float(np.mean(total_sasa))
+
+        fig1, ax1 = plt.subplots(figsize=figsize_time)
+        ax1.plot(time_vals, total_sasa, alpha=0.35, color=color_time,
+                 linewidth=0.6, label="SASA")
+        ax1.plot(time_vals, rolling_mean, color="darkslategray",
+                 linewidth=1.5, label=f"Rolling mean (w={window})")
+        ax1.axhline(mean_val, color="crimson", linestyle="--",
+                    linewidth=1.0, label=f"Mean = {mean_val:.2f} nm²")
+        ax1.set_xlabel(f"Time ({time_unit})", fontsize=12)
+        ax1.set_ylabel("SASA (nm²)", fontsize=12)
+        ax1.set_title(f"Total SASA Over Time – {self.protein_name}", fontsize=13)
+        ax1.legend(fontsize=9)
+        fig1.tight_layout()
+        out1 = self.work_dir / f"sasa_timeseries_{self.protein_name}.png"
+        fig1.savefig(str(out1), dpi=dpi)
+        plt.close(fig1)
+        print(f"✓  SASA time-series figure saved → {out1}")
+
+        # ---- Figure 2: per-residue SASA ------------------------------------
+        if sasa_data is not None:
+            res_index = sasa_data["res_index"].astype(int)
+            res_sasa  = sasa_data["res_sasa"]
+        else:
+            csv = residue_csv or str(
+                self.work_dir / f"sasa_residue_{self.protein_name}.csv"
+            )
+            df        = pd.read_csv(csv)
+            res_index = df["residue"].values
+            res_sasa  = df["sasa_nm2"].values
+
+        # Colour bars by SASA value for instant visual interpretation
+        norm   = plt.Normalize(vmin=res_sasa.min(), vmax=res_sasa.max())
+        cmap   = plt.get_cmap(cmap_res)
+        colors = cmap(norm(res_sasa))
+
+        fig2, ax2 = plt.subplots(figsize=figsize_res)
+        ax2.bar(res_index, res_sasa, color=colors, width=1.0, edgecolor="none")
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        fig2.colorbar(sm, ax=ax2, label="SASA (nm²)", shrink=0.8)
+        ax2.set_xlabel("Residue number", fontsize=12)
+        ax2.set_ylabel("Mean SASA (nm²)", fontsize=12)
+        ax2.set_title(
+            f"Per-Residue SASA – {self.protein_name}", fontsize=13
+        )
+        fig2.tight_layout()
+        out2 = self.work_dir / f"sasa_residue_{self.protein_name}.png"
+        fig2.savefig(str(out2), dpi=dpi)
+        plt.close(fig2)
+        print(f"✓  Per-residue SASA figure saved → {out2}")
+
+    # ------------------------------------------------------------------
+    # 5. Covariance / PCA analysis (renumbered)
     # ------------------------------------------------------------------
 
     def covariance_analysis(
