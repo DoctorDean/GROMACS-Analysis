@@ -363,12 +363,15 @@ class TestCovarianceToCorrelation:
         from gromacs_analysis import GromacsAnalysis
         sim = GromacsAnalysis(md_name="md", protein_name="TEST",
                               work_dir=str(tmp_dir))
-        # Build a small synthetic 3-residue covariance matrix (9×9 = (3*3)^2)
+        # Build a proper (3N)×(3N) covariance matrix from simulated trajectory
+        # so that diagonal block sums are positive (required for valid DCCM)
         n_res = 3
-        rng   = np.random.default_rng(0)
-        A     = rng.random((n_res * 3, n_res * 3))
-        cov   = A @ A.T          # positive semi-definite
-        flat  = cov.flatten()
+        rng = np.random.default_rng(0)
+        n_frames = 500
+        X = rng.normal(0, 1, (n_frames, n_res * 3))
+        X -= X.mean(axis=0)
+        cov = (X.T @ X) / n_frames   # proper positive semi-definite covariance
+        flat = cov.flatten()
         dat_path = tmp_dir / "covar_TEST.dat"
         pd.DataFrame(flat).to_csv(str(dat_path), index=False, header=False)
         corr = sim.covariance_to_correlation(dat_file=str(dat_path))
@@ -379,10 +382,12 @@ class TestCovarianceToCorrelation:
         sim = GromacsAnalysis(md_name="md", protein_name="TEST",
                               work_dir=str(tmp_dir))
         n_res = 4
-        rng   = np.random.default_rng(1)
-        A     = rng.random((n_res * 3, n_res * 3))
-        cov   = A @ A.T
-        flat  = cov.flatten()
+        rng = np.random.default_rng(1)
+        n_frames = 500
+        X = rng.normal(0, 1, (n_frames, n_res * 3))
+        X -= X.mean(axis=0)
+        cov = (X.T @ X) / n_frames
+        flat = cov.flatten()
         dat_path = tmp_dir / "covar_TEST.dat"
         pd.DataFrame(flat).to_csv(str(dat_path), index=False, header=False)
         corr = sim.covariance_to_correlation(dat_file=str(dat_path))

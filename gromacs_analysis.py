@@ -1002,32 +1002,36 @@ class GromacsAnalysis:
         dat_path = dat_file or str(self.work_dir / f"covar_{self.protein_name}.dat")
 
         # Read the flat covariance values produced by gmx covar -ascii
-        covar = pd.read_csv(dat_path, header=None, names=["value"])
+        flat = np.loadtxt(dat_path)
 
-        # Number of residues: total elements = (3N)^2  →  N = sqrt(len / 9)
-        resnum = int(math.sqrt(len(covar.index) / 3))
+        # Number of residues N: the matrix is (3N × 3N) stored row-major,
+        # so total elements = (3N)² = 9N²  →  N = sqrt(total / 9)
+        n_atoms = int(round(math.sqrt(len(flat))))   # 3N
+        resnum  = n_atoms // 3
 
-        # ---- Rebuild the N×N residue-level covariance matrix ---------------
-        # The 3N×3N matrix is stored row-major.  For each residue pair (i, j)
-        # the relevant 3×3 block is summed to get a scalar covariance.
-        all_results = pd.DataFrame()
+        # Reshape flat array back to (3N, 3N)
+        cov_3n = flat.reshape(n_atoms, n_atoms)
 
+        # ---- Residue-level covariance via trace of 3×3 blocks ---------------
+        # The correct scalar covariance for residue pair (i, j) is the trace
+        # of the 3×3 submatrix:  C(i,j) = Tr(cov[3i:3i+3, 3j:3j+3])
+        # Reference: Ichiye & Karplus, Proteins (1991).
+        # Using the sum of all 9 block elements (as in some older implementations)
+        # can produce values outside [-1, 1] when off-diagonal xyz covariances
+        # are large, which is physically wrong.
+        cov_res = np.zeros((resnum, resnum))
         for i in range(resnum):
-            three_step = pd.DataFrame()
-            for j in range((i * resnum) * 3, int(len(covar) / resnum) * (i + 1), resnum):
-                block = covar.iloc[j : resnum + j].reset_index(drop=True)
-                three_step = pd.concat([three_step, block], ignore_index=True, axis=1)
-            all_results = pd.concat([all_results, three_step], ignore_index=True, axis=0)
-
-        all_results["sum"] = all_results.sum(axis=1)
-        cov_matrix = all_results["sum"].to_numpy().reshape(resnum, resnum)
+            for j in range(resnum):
+                block = cov_3n[3 * i : 3 * i + 3, 3 * j : 3 * j + 3]
+                cov_res[i, j] = np.trace(block)
 
         # ---- Normalise to cross-correlation --------------------------------
+        diag = np.diag(cov_res)   # variance of each residue
         corr = np.zeros((resnum, resnum))
         for i in range(resnum):
             for j in range(resnum):
-                denom = math.sqrt(cov_matrix[i, i] * cov_matrix[j, j])
-                corr[i, j] = cov_matrix[i, j] / denom if denom != 0 else 0.0
+                denom = math.sqrt(abs(diag[i]) * abs(diag[j]))
+                corr[i, j] = cov_res[i, j] / denom if denom > 0 else 0.0
 
         # ---- Persist -------------------------------------------------------
         out_path = self.work_dir / f"cross_corr_{self.protein_name}.csv"

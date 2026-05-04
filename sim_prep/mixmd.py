@@ -107,15 +107,16 @@ class MixMDPrepper(SimulationPrepper):
         raw_ligands: list[dict] = self.config.get("ligands") or []
         self.ligands: list[dict] = raw_ligands
 
-        # Build derived lists — smiles may be None when the user provides
-        # a pre-built PDB instead of generating one from SMILES
-        self.ligand_codes:   list[str]           = [l["code"]   for l in raw_ligands]
-        self.ligand_numbers: list[int]            = [l["number"] for l in raw_ligands]
-        self.smiles_strings: list[Optional[str]]  = [l.get("smiles") for l in raw_ligands]
+        # Build derived lists — use .get() throughout so that malformed
+        # ligand dicts don't crash __init__ before validate_config() can
+        # collect and report all errors in a structured way
+        self.ligand_codes:   list[str]           = [l.get("code",   "") for l in raw_ligands]
+        self.ligand_numbers: list[int]            = [l.get("number", 0)  for l in raw_ligands]
+        self.smiles_strings: list[Optional[str]]  = [l.get("smiles")     for l in raw_ligands]
 
         # MDP templates and config directory
         self.config_dir = (
-            self.script_directory.parent / "md-configs" / "mixmd"
+            self.script_directory.parent / "config" / "gmx" / "mixmd"
         )
         self.mdp_files: dict[str, str] = {
             "ions": "ions_mix",
