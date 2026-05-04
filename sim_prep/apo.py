@@ -7,11 +7,20 @@ The ``ApoSimPrepper`` class inherits all shared GROMACS steps from
 :class:`sim_prep.base.SimulationPrepper` and adds the apo-specific
 MDP template set and config-file update logic.
 
+Config sources
+--------------
+Accepts configuration as keyword arguments or from a YAML/JSON file
+via :func:`sim_prep.config.load_config`.  Both are equivalent::
+
+    # From kwargs
+    sim = ApoSimPrepper(protein_name="hsp90", sim_len=100, ...)
+
+    # From YAML (via config loader)
+    sim = load_config("apo.yaml")
+
 Typical pipeline
 ----------------
 ::
-
-    from sim_prep.apo import ApoSimPrepper
 
     sim = ApoSimPrepper(
         protein_name="hsp90",
@@ -19,8 +28,6 @@ Typical pipeline
         bx_dim=1.0,
         bx_shp="dodecahedron",
         md_name="md_production",
-        pos_ion="NA",
-        neg_ion="CL",
         work_dir="/data/simulations/hsp90_apo",
     )
     sim.validate_config()
@@ -53,10 +60,10 @@ from sim_prep.base import (
 
 class ApoSimPrepper(SimulationPrepper):
     """
-    Preparation workflow for apo protein simulations.
+    Preparation workflow for apo (protein-only) simulations.
 
-    Uses the AMBER99SB-ILDN force field with TIP3P water by default.
-    All MDP templates are read from ``md-configs/apo/``.
+    Uses AMBER99SB-ILDN force field with TIP3P water by default.
+    All MDP templates are read from ``config/gmx/apo/``.
 
     Parameters
     ----------
@@ -65,9 +72,11 @@ class ApoSimPrepper(SimulationPrepper):
     sim_len : float
         Production run length in nanoseconds.
     bx_dim : float
-        Box padding in nanometres (distance from protein to box edge).
+        Box padding in nanometres (distance from protein surface to
+        box edge).
     bx_shp : str
-        Box shape — ``"cubic"``, ``"dodecahedron"``, etc.
+        Box shape — one of ``"cubic"``, ``"dodecahedron"``,
+        ``"triclinic"``, ``"octahedron"``.
     md_name : str
         Stem used for all production-run output files.
     pos_ion : str, optional
@@ -76,8 +85,10 @@ class ApoSimPrepper(SimulationPrepper):
         Negative counter-ion.  Defaults to ``"CL"``.
     work_dir : str or Path, optional
         Working directory.  Defaults to ``Path.cwd()``.
-    **kwargs
-        Passed to :class:`~sim_prep.base.SimulationPrepper`.
+    gmx_executable : str, optional
+        GROMACS binary name or full path.  Defaults to ``"gmx"``.
+    index_file : str, optional
+        Path to a custom ``.ndx`` file.  Defaults to ``None``.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -97,7 +108,8 @@ class ApoSimPrepper(SimulationPrepper):
             "md":   "md",
         }
 
-        # AMBER99SB-ILDN (6) + TIP3P (1); override if using a different FF
+        # AMBER99SB-ILDN (6) + TIP3P (1)
+        # Override ff_selection after construction to use a different FF
         self.ff_selection: str = "6\n1\n"
         # Group 13 = SOL in a standard protein-water system
         self.genion_sele: str = "13"
@@ -108,49 +120,71 @@ class ApoSimPrepper(SimulationPrepper):
 
     def validate_config(self) -> None:
         """
-        Validate the constructor kwargs for an apo simulation.
+        Validate ``self.config`` for an apo simulation.
+
+        Checks all required fields and their types and ranges.  Collects
+        every problem found before raising so the user sees the full list
+        of issues in a single error message.
 
         Raises
         ------
         ValueError
-            If any required parameter is missing or out of range.
+            If any required parameter is missing, the wrong type, or
+            outside the permitted range.
         """
         cfg = self.config
         errors: list[str] = []
 
-        # protein_name
-        if not isinstance(cfg.get("protein_name"), str) or not cfg["protein_name"]:
+        # protein_name — required, non-empty string
+        if not isinstance(cfg.get("protein_name"), str) or not cfg["protein_name"].strip():
             errors.append("protein_name must be a non-empty string")
 
-        # sim_len
+        # sim_len — required, numeric, within range
         sim_len = cfg.get("sim_len")
-        if not isinstance(sim_len, (int, float)):
+        try:
+            sim_len = float(sim_len)  # coerce int or string-number from YAML
+        except (TypeError, ValueError):
             errors.append("sim_len must be a number (nanoseconds)")
-        elif not (LIMITS["sim_len"][0] <= sim_len <= LIMITS["sim_len"][1]):
+            sim_len = None
+        if sim_len is not None:
             lo, hi = LIMITS["sim_len"]
-            errors.append(f"sim_len must be between {lo} and {hi} ns")
+            if not (lo <= sim_len <= hi):
+                errors.append(f"sim_len must be between {lo} and {hi} ns, got {sim_len}")
 
-        # bx_shp
+        # bx_shp — required, one of the valid shapes
         if cfg.get("bx_shp") not in VALID_BOX_SHAPES:
-            errors.append(f"bx_shp must be one of {VALID_BOX_SHAPES}")
+            errors.append(
+                f"bx_shp must be one of {VALID_BOX_SHAPES}, "
+                f"got {cfg.get('bx_shp')!r}"
+            )
 
-        # bx_dim
+        # bx_dim — required, numeric, within range
         bx_dim = cfg.get("bx_dim")
-        if not isinstance(bx_dim, (int, float)):
+        try:
+            bx_dim = float(bx_dim)
+        except (TypeError, ValueError):
             errors.append("bx_dim must be a number (nm)")
-        elif not (LIMITS["bx_dim"][0] <= bx_dim <= LIMITS["bx_dim"][1]):
+            bx_dim = None
+        if bx_dim is not None:
             lo, hi = LIMITS["bx_dim"]
-            errors.append(f"bx_dim must be between {lo} and {hi} nm")
+            if not (lo <= bx_dim <= hi):
+                errors.append(f"bx_dim must be between {lo} and {hi} nm, got {bx_dim}")
 
-        # md_name
-        if not isinstance(cfg.get("md_name"), str) or not cfg["md_name"]:
+        # md_name — required, non-empty string
+        if not isinstance(cfg.get("md_name"), str) or not cfg["md_name"].strip():
             errors.append("md_name must be a non-empty string")
 
-        # ions
+        # ions — optional with defaults; validate only if explicitly provided
         if cfg.get("pos_ion", "NA") not in VALID_POS_IONS:
-            errors.append(f"pos_ion must be one of {VALID_POS_IONS}")
+            errors.append(
+                f"pos_ion must be one of {VALID_POS_IONS}, "
+                f"got {cfg.get('pos_ion')!r}"
+            )
         if cfg.get("neg_ion", "CL") not in VALID_NEG_IONS:
-            errors.append(f"neg_ion must be one of {VALID_NEG_IONS}")
+            errors.append(
+                f"neg_ion must be one of {VALID_NEG_IONS}, "
+                f"got {cfg.get('neg_ion')!r}"
+            )
 
         if errors:
             raise ValueError(
@@ -160,11 +194,12 @@ class ApoSimPrepper(SimulationPrepper):
 
     def update_config_files(self) -> None:
         """
-        Patch ``md.mdp`` in the working directory with the correct
-        ``nsteps`` value derived from ``self.sim_length``.
+        Patch ``md.mdp`` with the correct ``nsteps`` value derived from
+        ``self.sim_length``.
 
         For apo simulations only the production MDP needs updating;
-        the equilibration MDPs use fixed step counts.
+        equilibration MDPs use fixed step counts that are set in the
+        template files.
         """
         md_mdp = self.working_dir / f"{self.mdp_files['md']}.mdp"
         self._patch_nsteps(md_mdp)

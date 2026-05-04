@@ -165,15 +165,18 @@ class CplxSimPrepper(SimulationPrepper):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        self.ligand_code: Optional[str] = self.config.get("ligand_code")
-        self.param_ligand_name: str     = self.config.get("param_ligand_name", "UNL")
-        self.remove_ligands: list[str]  = self.config.get("remove_ligands", ["UNL"])
+        self.ligand_code: Optional[str]  = self.config.get("ligand_code")
+        self.param_ligand_name: str      = self.config.get("param_ligand_name", "UNL")
+
+        # remove_ligands may be None from a YAML commented-out key;
+        # _normalise_config strips it, but guard here for explicit null
+        raw_remove = self.config.get("remove_ligands", ["UNL"])
+        self.remove_ligands: list[str] = raw_remove if raw_remove else ["UNL"]
 
         # MDP templates and config directory
         self.config_dir = (
             self.script_directory.parent / "md-configs" / "complex"
         )
-
         self.mdp_files: dict[str, str] = {
             "ions": "ions_prot_lig",
             "em":   "em_prot_lig",
@@ -182,25 +185,19 @@ class CplxSimPrepper(SimulationPrepper):
             "md":   "md_prot_lig",
         }
 
-        # Path to the parameterisation shell script
-        self.param_with_amber_script: Path = (
-            self.script_directory.parent / "utils" / "param_with_amber.sh"
-        )
-
         # Ligand file handles (populated after param_with_amber / gro2itp)
-        self.ligand_dir:       Optional[Path] = None
-        self.ligand_top_file:  Optional[Path] = None
-        self.ligand_itp_file:  Optional[Path] = None
-        self.ligand_gro_file:  Optional[Path] = None
+        self.ligand_dir:        Optional[Path] = None
+        self.ligand_top_file:   Optional[Path] = None
+        self.ligand_itp_file:   Optional[Path] = None
+        self.ligand_gro_file:   Optional[Path] = None
         self.ligand_posre_file: Optional[Path] = None
 
         # Group 15 = SOL in a protein-ligand-water system
         self.genion_sele = "15"
 
-        if not self.config.get("protein_name") or not self.ligand_code:
-            raise ValueError(
-                "CplxSimPrepper requires both 'protein_name' and 'ligand_code' in kwargs."
-            )
+        # NOTE: early validation of required fields is intentionally deferred
+        # to validate_config() so that load_config() can surface all errors
+        # in a structured way rather than raising a bare ValueError here.
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -208,41 +205,67 @@ class CplxSimPrepper(SimulationPrepper):
 
     def validate_config(self) -> None:
         """
-        Validate constructor kwargs for a protein–ligand complex simulation.
+        Validate ``self.config`` for a protein–ligand complex simulation.
+
+        Collects every problem before raising so the user sees the full
+        list in a single error message.
 
         Raises
         ------
         ValueError
-            If any required parameter is missing or out of range.
+            If any required parameter is missing, wrong type, or out of range.
         """
         cfg = self.config
         errors: list[str] = []
 
+        # Required non-empty strings
         for key in ("protein_name", "ligand_code", "md_name"):
-            if not isinstance(cfg.get(key), str) or not cfg[key]:
-                errors.append(f"{key} must be a non-empty string")
+            val = cfg.get(key)
+            if not isinstance(val, str) or not val.strip():
+                errors.append(f"{key} must be a non-empty string, got {val!r}")
 
+        # sim_len — coerce to float (YAML may deliver int or float)
         sim_len = cfg.get("sim_len")
-        if not isinstance(sim_len, (int, float)):
+        try:
+            sim_len = float(sim_len)
+        except (TypeError, ValueError):
             errors.append("sim_len must be a number (nanoseconds)")
-        elif not (LIMITS["sim_len"][0] <= sim_len <= LIMITS["sim_len"][1]):
+            sim_len = None
+        if sim_len is not None:
             lo, hi = LIMITS["sim_len"]
-            errors.append(f"sim_len must be between {lo} and {hi} ns")
+            if not (lo <= sim_len <= hi):
+                errors.append(f"sim_len must be between {lo} and {hi} ns, got {sim_len}")
 
+        # bx_shp
         if cfg.get("bx_shp") not in VALID_BOX_SHAPES:
-            errors.append(f"bx_shp must be one of {VALID_BOX_SHAPES}")
+            errors.append(
+                f"bx_shp must be one of {VALID_BOX_SHAPES}, "
+                f"got {cfg.get('bx_shp')!r}"
+            )
 
+        # bx_dim — coerce to float
         bx_dim = cfg.get("bx_dim")
-        if not isinstance(bx_dim, (int, float)):
+        try:
+            bx_dim = float(bx_dim)
+        except (TypeError, ValueError):
             errors.append("bx_dim must be a number (nm)")
-        elif not (LIMITS["bx_dim"][0] <= bx_dim <= LIMITS["bx_dim"][1]):
+            bx_dim = None
+        if bx_dim is not None:
             lo, hi = LIMITS["bx_dim"]
-            errors.append(f"bx_dim must be between {lo} and {hi} nm")
+            if not (lo <= bx_dim <= hi):
+                errors.append(f"bx_dim must be between {lo} and {hi} nm, got {bx_dim}")
 
+        # ions — optional with validated defaults
         if cfg.get("pos_ion", "NA") not in VALID_POS_IONS:
-            errors.append(f"pos_ion must be one of {VALID_POS_IONS}")
+            errors.append(
+                f"pos_ion must be one of {VALID_POS_IONS}, "
+                f"got {cfg.get('pos_ion')!r}"
+            )
         if cfg.get("neg_ion", "CL") not in VALID_NEG_IONS:
-            errors.append(f"neg_ion must be one of {VALID_NEG_IONS}")
+            errors.append(
+                f"neg_ion must be one of {VALID_NEG_IONS}, "
+                f"got {cfg.get('neg_ion')!r}"
+            )
 
         if errors:
             raise ValueError(

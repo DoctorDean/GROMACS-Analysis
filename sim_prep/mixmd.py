@@ -104,11 +104,14 @@ class MixMDPrepper(SimulationPrepper):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        raw_ligands: list[dict] = self.config.get("ligands", [])
-        self.ligands:       list[dict] = raw_ligands
-        self.ligand_codes:  list[str]  = [l["code"]   for l in raw_ligands]
-        self.ligand_numbers: list[int] = [l["number"] for l in raw_ligands]
-        self.smiles_strings: list[str] = [l["smiles"] for l in raw_ligands]
+        raw_ligands: list[dict] = self.config.get("ligands") or []
+        self.ligands: list[dict] = raw_ligands
+
+        # Build derived lists — smiles may be None when the user provides
+        # a pre-built PDB instead of generating one from SMILES
+        self.ligand_codes:   list[str]           = [l["code"]   for l in raw_ligands]
+        self.ligand_numbers: list[int]            = [l["number"] for l in raw_ligands]
+        self.smiles_strings: list[Optional[str]]  = [l.get("smiles") for l in raw_ligands]
 
         # MDP templates and config directory
         self.config_dir = (
@@ -122,10 +125,8 @@ class MixMDPrepper(SimulationPrepper):
             "md":   "md_mix",
         }
 
-        if not self.config.get("protein_name") or not self.ligands:
-            raise ValueError(
-                "MixMDPrepper requires both 'protein_name' and 'ligands' in kwargs."
-            )
+        # NOTE: early validation of required fields is deferred to
+        # validate_config() so load_config() surfaces all errors together.
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -133,49 +134,82 @@ class MixMDPrepper(SimulationPrepper):
 
     def validate_config(self) -> None:
         """
-        Validate constructor kwargs for a MixMD simulation.
+        Validate ``self.config`` for a MixMD simulation.
+
+        Collects every problem before raising so the user sees the full
+        list in a single error message.
 
         Raises
         ------
         ValueError
-            If any required parameter is missing or out of range.
+            If any required parameter is missing, wrong type, or out of range.
         """
         cfg = self.config
         errors: list[str] = []
 
-        if not isinstance(cfg.get("protein_name"), str) or not cfg["protein_name"]:
+        # protein_name
+        if not isinstance(cfg.get("protein_name"), str) or not cfg["protein_name"].strip():
             errors.append("protein_name must be a non-empty string")
 
+        # sim_len — coerce to float
         sim_len = cfg.get("sim_len")
-        if not isinstance(sim_len, (int, float)):
+        try:
+            sim_len = float(sim_len)
+        except (TypeError, ValueError):
             errors.append("sim_len must be a number (nanoseconds)")
-        elif not (LIMITS["sim_len"][0] <= sim_len <= LIMITS["sim_len"][1]):
+            sim_len = None
+        if sim_len is not None:
             lo, hi = LIMITS["sim_len"]
-            errors.append(f"sim_len must be between {lo} and {hi} ns")
+            if not (lo <= sim_len <= hi):
+                errors.append(f"sim_len must be between {lo} and {hi} ns, got {sim_len}")
 
+        # bx_shp
         if cfg.get("bx_shp") not in VALID_BOX_SHAPES:
-            errors.append(f"bx_shp must be one of {VALID_BOX_SHAPES}")
+            errors.append(
+                f"bx_shp must be one of {VALID_BOX_SHAPES}, "
+                f"got {cfg.get('bx_shp')!r}"
+            )
 
+        # bx_dim — coerce to float
         bx_dim = cfg.get("bx_dim")
-        if not isinstance(bx_dim, (int, float)):
+        try:
+            bx_dim = float(bx_dim)
+        except (TypeError, ValueError):
             errors.append("bx_dim must be a number (nm)")
-        elif not (LIMITS["bx_dim"][0] <= bx_dim <= LIMITS["bx_dim"][1]):
+            bx_dim = None
+        if bx_dim is not None:
             lo, hi = LIMITS["bx_dim"]
-            errors.append(f"bx_dim must be between {lo} and {hi} nm")
+            if not (lo <= bx_dim <= hi):
+                errors.append(f"bx_dim must be between {lo} and {hi} nm, got {bx_dim}")
 
+        # ions
         if cfg.get("pos_ion", "NA") not in VALID_POS_IONS:
-            errors.append(f"pos_ion must be one of {VALID_POS_IONS}")
+            errors.append(
+                f"pos_ion must be one of {VALID_POS_IONS}, "
+                f"got {cfg.get('pos_ion')!r}"
+            )
         if cfg.get("neg_ion", "CL") not in VALID_NEG_IONS:
-            errors.append(f"neg_ion must be one of {VALID_NEG_IONS}")
+            errors.append(
+                f"neg_ion must be one of {VALID_NEG_IONS}, "
+                f"got {cfg.get('neg_ion')!r}"
+            )
 
-        ligands = cfg.get("ligands", [])
+        # ligands — required non-empty list; smiles is optional per entry
+        ligands = cfg.get("ligands") or []
         if not ligands:
-            errors.append("ligands must be a non-empty list")
+            errors.append(
+                "ligands must be a non-empty list of probe molecule definitions"
+            )
         else:
             for i, lig in enumerate(ligands):
-                for field in ("code", "number", "smiles"):
-                    if field not in lig:
-                        errors.append(f"ligands[{i}] missing required field '{field}'")
+                for required_field in ("code", "number"):
+                    if required_field not in lig or lig[required_field] is None:
+                        errors.append(
+                            f"ligands[{i}] missing required field '{required_field}'"
+                        )
+                # smiles is optional — a pre-built {code}.pdb may be provided instead
+                # No error if smiles is absent or null; param_all_ligands() will
+                # raise FileNotFoundError at runtime if neither smiles nor PDB exists
 
         if errors:
             raise ValueError(

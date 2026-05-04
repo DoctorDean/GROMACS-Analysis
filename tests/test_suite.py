@@ -499,9 +499,9 @@ class TestMixMDValidation:
 
     def test_ligand_missing_field_raises(self):
         from sim_prep.mixmd import MixMDPrepper
-        with pytest.raises(ValueError, match="smiles"):
+        with pytest.raises(ValueError, match="number"):
             MixMDPrepper(protein_name="p",
-                         ligands=[{"code": "ACT", "number": 10}],
+                         ligands=[{"code": "ACT"}],   # missing 'number'
                          sim_len=10, bx_dim=1.0, bx_shp="dodecahedron",
                          md_name="md", pos_ion="NA",
                          neg_ion="CL").validate_config()

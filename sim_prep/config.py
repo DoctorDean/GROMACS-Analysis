@@ -101,8 +101,16 @@ _PREPPER_REGISTRY: dict[str, type[SimulationPrepper]] = {
     "mixmd":   MixMDPrepper,
 }
 
-# Fields that are handled by the loader itself, not passed to the class
-_LOADER_KEYS = {"type"}
+# Keys consumed by load_config() itself and not forwarded to the prepper class.
+# These are either loader-level directives ("type") or keys that control
+# _run_pipeline() routing ("protein_input", "ligand_input", "keep_residues",
+# "run_all") but have no meaning as constructor kwargs.
+_LOADER_KEYS: frozenset[str] = frozenset({
+    "type",            # selects the prepper class
+    "protein_input",   # Path B/C: native structure file path
+    "ligand_input",    # Path B/C: ligand file path or smiles: string
+    "keep_residues",   # Path B/C: HETATM residues to retain
+})
 
 
 def load_config(
