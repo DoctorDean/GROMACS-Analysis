@@ -174,13 +174,10 @@ class GromacsAnalysis:
     ):
         self.md_name = md_name
         self.protein_name = protein_name
-        self.work_dir = Path(work_dir) if work_dir else Path.cwd()
+        self.work_dir = Path(work_dir).resolve() if work_dir else Path.cwd().resolve()
         self.groups = groups or SelectionGroups()
         self.index_file = index_file
         self.gmx = gmx_executable
-
-        # Change into the working directory so all relative paths resolve
-        os.chdir(self.work_dir)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -209,7 +206,13 @@ class GromacsAnalysis:
             ``True`` on success, ``False`` on ``CalledProcessError``.
         """
         try:
-            subprocess.run(command, input=stdin, check=True, text=True)
+            subprocess.run(
+                command,
+                input=stdin,
+                check=True,
+                text=True,
+                cwd=str(self.work_dir),
+            )
             print(f"✓  {label}")
             return True
         except subprocess.CalledProcessError as e:
@@ -1200,23 +1203,41 @@ class GromacsAnalysis:
         # Remove self-loops before all metric calculations
         G.remove_edges_from(nx.selfloop_edges(G))
 
+        # ---- Guard: empty graph after threshold filtering ------------------
+        if G.number_of_edges() == 0:
+            print(f"\n  Network has no edges at threshold={threshold}. "
+                  f"Lower the threshold or check your correlation matrix.\n")
+            return G
+
         # ---- Metrics -------------------------------------------------------
         is_connected = nx.is_connected(G)
 
         degree_centrality  = nx.degree_centrality(G)
         betweenness        = nx.betweenness_centrality(G)
         closeness          = nx.closeness_centrality(G)
-        eigenvector        = nx.eigenvector_centrality(G, max_iter=1000)
+        # eigenvector centrality can fail on disconnected graphs — fall back gracefully
+        try:
+            eigenvector = nx.eigenvector_centrality(G, max_iter=1000)
+        except nx.PowerIterationFailedConvergence:
+            eigenvector = {n: 0.0 for n in G.nodes()}
         edge_betweenness   = nx.edge_betweenness_centrality(G)
-        assortativity      = nx.degree_assortativity_coefficient(G)
         clustering         = nx.average_clustering(G)
         core               = nx.k_core(G)
         articulation_pts   = list(nx.articulation_points(G))
+
+        # assortativity requires at least one edge with differing degrees
+        try:
+            assortativity = nx.degree_assortativity_coefficient(G)
+        except (ValueError, ZeroDivisionError):
+            assortativity = float("nan")
 
         try:
             avg_path_length = nx.average_shortest_path_length(G) if is_connected else None
         except Exception:
             avg_path_length = None
+
+        def _fmt_max(d: dict) -> str:
+            return f"{max(d.values()):.4f}" if d else "N/A"
 
         # ---- Print ---------------------------------------------------------
         sep = "-" * 50
@@ -1228,12 +1249,13 @@ class GromacsAnalysis:
         print(f"  Avg path length      : "
               f"{avg_path_length:.4f}" if avg_path_length else "  Avg path length      : graph not fully connected")
         print(f"  Avg clustering coeff : {clustering:.4f}")
-        print(f"  Max degree centrality      : {max(degree_centrality.values()):.4f}")
-        print(f"  Max betweenness centrality : {max(betweenness.values()):.4f}")
-        print(f"  Max closeness centrality   : {max(closeness.values()):.4f}")
-        print(f"  Max eigenvector centrality : {max(eigenvector.values()):.4f}")
-        print(f"  Max edge betweenness       : {max(edge_betweenness.values()):.4f}")
-        print(f"  Degree assortativity       : {assortativity:.4f}")
+        print(f"  Max degree centrality      : {_fmt_max(degree_centrality)}")
+        print(f"  Max betweenness centrality : {_fmt_max(betweenness)}")
+        print(f"  Max closeness centrality   : {_fmt_max(closeness)}")
+        print(f"  Max eigenvector centrality : {_fmt_max(eigenvector)}")
+        print(f"  Max edge betweenness       : {_fmt_max(edge_betweenness)}")
+        print(f"  Degree assortativity       : {assortativity:.4f}" if not math.isnan(assortativity)
+              else f"  Degree assortativity       : N/A")
         print(f"  k-core size                : {len(core)}")
         print(f"  Articulation points ({len(articulation_pts)})  : {articulation_pts}")
         print(sep + "\n")

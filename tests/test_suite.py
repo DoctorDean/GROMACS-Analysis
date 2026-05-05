@@ -431,6 +431,7 @@ class TestCorrelationNetwork:
                               work_dir=str(tmp_dir))
         G_low  = sim.correlation_network(corr=mock_corr, threshold=0.1)
         G_high = sim.correlation_network(corr=mock_corr, threshold=0.9)
+        # A lower threshold must produce at least as many edges as a higher one
         assert G_low.number_of_edges() >= G_high.number_of_edges()
 
 
