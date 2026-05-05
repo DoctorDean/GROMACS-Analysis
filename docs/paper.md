@@ -1,5 +1,5 @@
 ---
-title: 'MDAnalysis-GROMACS: An integrated Python toolkit for molecular dynamics simulation preparation and trajectory analysis'
+title: 'GROMACS-Analysis: An integrated Python toolkit for molecular dynamics simulation preparation and trajectory analysis'
 
 tags:
   - Python
@@ -12,15 +12,15 @@ tags:
   - principal component analysis
 
 authors:
-  - name: [Your Name]
-    orcid: 0000-0000-0000-0000
+  - name: Dean Sherry
+    orcid: 0000-0003-2582-0868
     affiliation: 1
 
 affiliations:
-  - name: [Your Institution]
+  - name: De Novo Foodlabs
     index: 1
 
-date: 2025
+date: 2026
 
 bibliography: paper.bib
 ---

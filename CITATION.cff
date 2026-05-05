@@ -1,0 +1,208 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it using the metadata below."
+type: software
+
+title: "GROMACS-Analysis: An integrated Python toolkit for GROMACS simulation preparation and trajectory analysis"
+version: 1.2.0
+date-released: "2025-05-05"
+license: MIT
+
+abstract: >
+  GROMACS-Analysis is a Python toolkit that unifies the full GROMACS
+  molecular dynamics pipeline — from raw protein structure through
+  simulation preparation, equilibration, production run, and
+  post-simulation trajectory analysis — into a single coherent,
+  documented, and testable codebase. The package provides sim_prep for
+  automated preparation of apo, protein-ligand complex, and mixed-solvent
+  (MixMD) simulations, and GromacsAnalysis for trajectory analysis
+  including RMSD/RMSF, hydrogen bond analysis, SASA, dynamic
+  cross-correlation, PCA, free energy landscapes, graph-theoretic network
+  analysis, and PDB structure annotation.
+
+authors:
+  - family-names: "Sherry"
+    given-names: "Dean"
+    orcid: "https://orcid.org/0000-0003-2582-0868"
+    affiliation: "De Novo Foodlabs"
+    email: "dean@denovofoodlabs.com"
+
+repository-code: "https://github.com/DoctorDean/GROMACS-Analysis"
+url: "https://github.com/DoctorDean/GROMACS-Analysis"
+doi: "10.5281/zenodo.20040430"
+
+keywords:
+  - molecular dynamics
+  - GROMACS
+  - structural biology
+  - protein simulation
+  - trajectory analysis
+  - free energy landscape
+  - principal component analysis
+  - mixed-solvent MD
+  - computational drug discovery
+  - Python
+
+references:
+  - type: article
+    title: "GROMACS: High performance molecular simulations through multi-level parallelism from laptops to supercomputers"
+    authors:
+      - family-names: "Abraham"
+        given-names: "Mark James"
+      - family-names: "Murtola"
+        given-names: "Teemu"
+      - family-names: "Schulz"
+        given-names: "Roland"
+      - family-names: "Páll"
+        given-names: "Szilárd"
+      - family-names: "Smith"
+        given-names: "Jeremy C"
+      - family-names: "Hess"
+        given-names: "Berk"
+      - family-names: "Lindahl"
+        given-names: "Erik"
+    journal: "SoftwareX"
+    volume: "1-2"
+    pages: "19-25"
+    year: 2015
+    doi: "10.1016/j.softx.2015.06.001"
+
+  - type: article
+    title: "AmberTools"
+    authors:
+      - family-names: "Case"
+        given-names: "David A"
+      - family-names: "Aktulga"
+        given-names: "H Metin"
+      - family-names: "Belfon"
+        given-names: "Kellon"
+      - family-names: "Ben-Shalom"
+        given-names: "Ido Y"
+      - family-names: "Berryman"
+        given-names: "Joshua T"
+    journal: "Journal of Chemical Information and Modeling"
+    volume: "63"
+    issue: "20"
+    pages: "6183-6191"
+    year: 2023
+    doi: "10.1021/acs.jcim.3c01153"
+
+  - type: article
+    title: "ACPYPE - AnteChamber PYthon Parser interfacE"
+    authors:
+      - family-names: "Sousa da Silva"
+        given-names: "Alan W"
+      - family-names: "Vranken"
+        given-names: "Wim F"
+    journal: "BMC Research Notes"
+    volume: "5"
+    pages: "367"
+    year: 2012
+    doi: "10.1186/1756-0500-5-367"
+
+  - type: conference-paper
+    title: "Exploring network structure, dynamics, and function using NetworkX"
+    authors:
+      - family-names: "Hagberg"
+        given-names: "Aric A"
+      - family-names: "Schult"
+        given-names: "Daniel A"
+      - family-names: "Swart"
+        given-names: "Pieter J"
+    collection-title: "Proceedings of the 7th Python in Science Conference"
+    pages: "11-15"
+    year: 2008
+
+  - type: article
+    title: "Biopython: freely available Python tools for computational molecular biology and bioinformatics"
+    authors:
+      - family-names: "Cock"
+        given-names: "Peter J A"
+      - family-names: "Antao"
+        given-names: "Tiago"
+      - family-names: "Chang"
+        given-names: "Jeffrey T"
+      - family-names: "Chapman"
+        given-names: "Brad A"
+      - family-names: "Cox"
+        given-names: "Cymon J"
+      - family-names: "Dalke"
+        given-names: "Andrew"
+      - family-names: "Friedberg"
+        given-names: "Iddo"
+      - family-names: "Hamelryck"
+        given-names: "Thomas"
+      - family-names: "Kauff"
+        given-names: "Frank"
+      - family-names: "Wilczynski"
+        given-names: "Bartek"
+      - family-names: "de Hoon"
+        given-names: "Michiel J L"
+    journal: "Bioinformatics"
+    volume: "25"
+    issue: "11"
+    pages: "1422-1423"
+    year: 2009
+    doi: "10.1093/bioinformatics/btp163"
+
+  - type: article
+    title: "SciPy 1.0: Fundamental algorithms for scientific computing in Python"
+    authors:
+      - family-names: "Virtanen"
+        given-names: "Pauli"
+      - family-names: "Gommers"
+        given-names: "Ralf"
+      - family-names: "Oliphant"
+        given-names: "Travis E"
+      - family-names: "Haberland"
+        given-names: "Matt"
+      - family-names: "Reddy"
+        given-names: "Tyler"
+      - family-names: "Cournapeau"
+        given-names: "David"
+      - family-names: "Burovski"
+        given-names: "Evgeni"
+      - family-names: "Peterson"
+        given-names: "Pearu"
+      - family-names: "Weckesser"
+        given-names: "Warren"
+      - family-names: "Bright"
+        given-names: "Jonathan"
+    journal: "Nature Methods"
+    volume: "17"
+    pages: "261-272"
+    year: 2020
+    doi: "10.1038/s41592-019-0686-2"
+
+  - type: software
+    title: "RDKit: Open-source cheminformatics"
+    authors:
+      - family-names: "Landrum"
+        given-names: "Gregory"
+    year: 2006
+    url: "https://www.rdkit.org"
+
+  - type: article
+    title: "Gemmi: A library for structural biology"
+    authors:
+      - family-names: "Wojdyr"
+        given-names: "Marcin"
+    journal: "Journal of Open Source Software"
+    volume: "7"
+    issue: "73"
+    pages: "4200"
+    year: 2022
+    doi: "10.21105/joss.04200"
+
+  - type: article
+    title: "Collective motions in proteins: a covariance analysis of atomic fluctuations in molecular dynamics and normal mode simulations"
+    authors:
+      - family-names: "Ichiye"
+        given-names: "Toshiko"
+      - family-names: "Karplus"
+        given-names: "Martin"
+    journal: "Proteins: Structure, Function, and Bioinformatics"
+    volume: "11"
+    issue: "3"
+    pages: "205-217"
+    year: 1991
+    doi: "10.1002/prot.340110305"

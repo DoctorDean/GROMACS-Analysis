@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![GROMACS](https://img.shields.io/badge/GROMACS-%E2%89%A52019-green.svg)](https://www.gromacs.org/)
+[![DOI](https://zenodo.org/badge/1189326031.svg)](https://doi.org/10.5281/zenodo.20040429)
 
 An integrated Python toolkit for GROMACS molecular dynamics simulation preparation and trajectory analysis. Covers the full pipeline — from raw protein structure to publication-quality figures — in a single, reproducible Python script.
 
