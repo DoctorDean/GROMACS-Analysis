@@ -798,7 +798,7 @@ If you use this toolkit in published research, please cite it as:
              GROMACS simulation preparation and trajectory analysis},
   year    = {2026},
   url     = {https://github.com/DoctorDean/GROMACS-Analysis},
-  doi     = {10.5281/zenodo.XXXXXXX},
+  doi     = {10.5281/zenodo.20040429},
 }
 ```
 
